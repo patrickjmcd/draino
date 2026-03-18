@@ -1,6 +1,3 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -44,20 +41,21 @@ var drainCmd = &cobra.Command{
 		valueDeserializer, _ := bunnyConsumer.NewJsonValueDeserializer[map[string]interface{}]()
 
 		messageTicker := make(chan bool, 1)
+		messageTimeout := time.Duration(viper.GetInt("timeout-drain"))
 
 		handler := &DrainHandler{messageTicker: messageTicker}
 		errorHandler := &DrainFakeErrorHandler{destructive: destructive}
 
 		consumer, err := bunnyConsumer.NewRabbitConsumer(
-			bunnyConsumer.WithConnectionString(viper.GetString("fromConnectionString")),
-			bunnyConsumer.WithExchangeName(viper.GetString("fromExchangeName")),
-			bunnyConsumer.WithExchangeType(viper.GetString("fromExchangeType")),
-			bunnyConsumer.WithExchangeAutoDelete(viper.GetBool("fromExchangeAutoDelete")),
-			bunnyConsumer.WithExchangeDurable(viper.GetBool("fromExchangeDurable")),
-			bunnyConsumer.WithQueueName(viper.GetString("fromQueueName")),
-			bunnyConsumer.WithQueueAutoDelete(viper.GetBool("fromQueueAutoDelete")),
-			bunnyConsumer.WithQueueDurable(viper.GetBool("fromQueueDurable")),
-			bunnyConsumer.WithTopic(viper.GetString("topic")),
+			bunnyConsumer.WithConnectionString(viper.GetString("from-connection-string")),
+			bunnyConsumer.WithExchangeName(viper.GetString("from-exchange-name")),
+			bunnyConsumer.WithExchangeType(viper.GetString("from-exchange-type")),
+			bunnyConsumer.WithExchangeAutoDelete(viper.GetBool("from-exchange-autodelete")),
+			bunnyConsumer.WithExchangeDurable(viper.GetBool("from-exchange-durable")),
+			bunnyConsumer.WithQueueName(viper.GetString("from-queue-name")),
+			bunnyConsumer.WithQueueAutoDelete(viper.GetBool("from-queue-autodelete")),
+			bunnyConsumer.WithQueueDurable(viper.GetBool("from-queue-durable")),
+			bunnyConsumer.WithTopic(viper.GetString("from-topic")),
 			bunnyConsumer.WithValueDeserializer(valueDeserializer),
 			bunnyConsumer.WithProcessingDelay(processingDelay), bunnyConsumer.WithTracePropagator(propagator),
 			bunnyConsumer.WithTracer(tp.Tracer(serviceName)),
@@ -93,8 +91,8 @@ var drainCmd = &cobra.Command{
 				select {
 				case <-messageTicker:
 					continue
-				case <-time.Tick(1 * time.Second):
-					log.Info().Msg("no messages for 1 second, closing")
+				case <-time.Tick(messageTimeout * time.Second):
+					log.Info().Msgf("no messages for %d second, closing", viper.GetInt("timeout-drain"))
 					cancel()
 				case <-gctx.Done():
 					return gctx.Err()
@@ -108,13 +106,19 @@ var drainCmd = &cobra.Command{
 
 		err = g.Wait()
 		if err != nil {
-			log.Error().Err(err).Msg("error running consumer")
+			if err != context.Canceled {
+				log.Error().Err(err).Msg("error running consumer")
+			}
+		}
+		if viper.GetBool("count") {
+			log.Info().Msgf("read %d messages", handler.counter)
 		}
 	},
 }
 
 type DrainHandler struct {
 	messageTicker chan bool
+	counter       int
 }
 
 func (p *DrainHandler) OnReceive(ctx context.Context, key, value interface{}) error {
@@ -125,8 +129,13 @@ func (p *DrainHandler) OnReceive(ctx context.Context, key, value interface{}) er
 		fmt.Println("error marshalling json", err)
 	}
 	fmt.Println(string(jsonString))
+	p.counter++
 	p.messageTicker <- true
 	return fmt.Errorf("error")
+}
+
+func (p *DrainHandler) PrintCount() {
+	log.Info().Msgf("read %d messages", p.counter)
 }
 
 type DrainFakeErrorHandler struct {
@@ -150,4 +159,12 @@ func init() {
 
 	viper.BindEnv("processing_delay_ms")
 	viper.SetDefault("processing_delay_ms", 0)
+
+	drainCmd.Flags().Int("timeout", 1, "The amount of time (in seconds) to wait for messages before closing the consumer")
+	viper.BindPFlag("timeout-drain", drainCmd.Flags().Lookup("timeout"))
+	viper.SetDefault("timeout-drain", 1)
+
+	drainCmd.Flags().BoolP("count", "c", false, "Report the number of messages that were read")
+	viper.BindPFlag("count", drainCmd.Flags().Lookup("count"))
+	viper.SetDefault("count", false)
 }

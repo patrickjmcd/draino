@@ -1,6 +1,3 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -23,6 +20,7 @@ var fillCmd = &cobra.Command{
 	Long:  `Write any number of messages to a rabbit queue, typically used for testing`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("fill called")
+		fmt.Println("exchange type is ", viper.GetString("to-exchange-type"))
 
 		valueSeralizer, err := bunnyProducer.NewJsonSerializer[map[string]interface{}]()
 		if err != nil {
@@ -44,7 +42,7 @@ var fillCmd = &cobra.Command{
 			bunnyProducer.WithQueueName(viper.GetString("to-queue-name")),
 			bunnyProducer.WithQueueAutoDelete(viper.GetBool("to-queue-autodelete")),
 			bunnyProducer.WithQueueDurable(viper.GetBool("to-queue-durable")),
-			bunnyProducer.WithTopic(viper.GetString("topic")),
+			bunnyProducer.WithTopic(viper.GetString("to-topic")),
 			bunnyProducer.WithValueSerializer(valueSeralizer),
 			bunnyProducer.WithTracer(tp.Tracer(serviceName)),
 			bunnyProducer.WithQueueNoBind(true),
@@ -77,36 +75,4 @@ func init() {
 	fillCmd.Flags().StringP("message", "m", `{"msg": "Hello, World!"}`, "The JSON message to write to the queue")
 	viper.BindPFlag("message", fillCmd.Flags().Lookup("message"))
 	viper.SetDefault("message", `{"msg": "Hello, World!"}`)
-
-	fillCmd.Flags().String("to-connection-string", "", "The connection string for the rabbitmq destination")
-	viper.BindPFlag("to-connection-string", fillCmd.Flags().Lookup("to-connection-string"))
-	viper.SetDefault("to-connection-string", "amqp://guest:guest@localhost:5672/")
-
-	fillCmd.Flags().String("to-exchange-name", "test_exchange", "The exchange to write messages to")
-	viper.BindPFlag("to-exchange-name", fillCmd.Flags().Lookup("to-exchange"))
-	viper.SetDefault("to-exchange-name", "test_exchange")
-
-	fillCmd.Flags().String("to-exchange-type", "direct", "The exchange type to write messages to")
-	viper.BindPFlag("to-exchange-type", fillCmd.Flags().Lookup("to-exchange-type"))
-	viper.SetDefault("to-exchange-type", "direct")
-
-	fillCmd.Flags().Bool("to-exchange-autodelete", false, "Delete the exchange when the last queue is unbound from it")
-	viper.BindPFlag("to-exchange-autodelete", fillCmd.Flags().Lookup("to-exchange-autodelete"))
-	viper.SetDefault("to-exchange-autodelete", false)
-
-	fillCmd.Flags().Bool("to-exchange-durable", false, "Persist the exchange to disk")
-	viper.BindPFlag("to-exchange-durable", fillCmd.Flags().Lookup("to-exchange-durable"))
-	viper.SetDefault("to-exchange-durable", false)
-
-	fillCmd.Flags().String("to-queue-name", "test_queue", "The queue to write messages to")
-	viper.BindPFlag("to-queue-name", fillCmd.Flags().Lookup("to-queue"))
-	viper.SetDefault("to-queue-name", "test_queue")
-
-	fillCmd.Flags().Bool("to-queue-autodelete", true, "Delete the queue when the last consumer unsubscribes")
-	viper.BindPFlag("to-queue-autodelete", fillCmd.Flags().Lookup("to-queue-autodelete"))
-	viper.SetDefault("to-queue-autodelete", true)
-
-	fillCmd.Flags().Bool("to-queue-durable", false, "Persist the queue to disk")
-	viper.BindPFlag("to-queue-durable", fillCmd.Flags().Lookup("to-queue-durable"))
-	viper.SetDefault("to-queue-durable", false)
 }
